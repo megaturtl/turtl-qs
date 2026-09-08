@@ -1,8 +1,0 @@
-.battery {
-  .batt    { color: var(--green); padding: 0 4px; }
-  .profile { color: var(--blue);  padding: 0 4px; }
-
-  &.low      .batt { color: var(--yellow); }
-  &.critical .batt { color: var(--red);    }
-  &.charging .batt { color: var(--teal);   }
-}
