@@ -1,7 +1,0 @@
-@use "../mixins" as *;
-
-.power {
-  color: var(--red);
-  padding: 0 10px;
-  @include bubble-hover(var(--red), var(--base));
-}

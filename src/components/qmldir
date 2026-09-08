@@ -1,0 +1,5 @@
+module components
+singleton Theme 1.0 Theme.qml
+Bar 1.0 Bar.qml
+BarTooltip 1.0 BarTooltip.qml
+Osd 1.0 Osd.qml
