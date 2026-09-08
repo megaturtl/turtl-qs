@@ -12,7 +12,7 @@ Item {
     property bool profileAvailable: activeProfile.length > 0
     property bool batteryPresent: battery && battery.ready && battery.isLaptopBattery && battery.powerSupply && battery.isPresent
     property bool charging: batteryPresent && battery.state === UPowerDeviceState.Charging
-    property int percentage: batteryPresent ? Math.round(battery.percentage) : 0
+    property int percentage: batteryPresent ? Math.round(battery.percentage * 100) : 0
 
     implicitWidth: batteryPresent ? bubble.implicitWidth : 0
     implicitHeight: batteryPresent ? bubble.implicitHeight : 0
@@ -57,8 +57,14 @@ Item {
         return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
     }
 
+    function formatPower(rate) {
+        if (!Number.isFinite(rate) || rate === 0)
+            return "";
+        return `Power: ${rate > 0 ? "+" : "-"}${Math.abs(rate).toFixed(1)} W`;
+    }
+
     function refreshProfile() {
-        if (batteryPresent && !profileQuery.running)
+        if (batteryPresent && !profileQuery.running && !profileSet.running)
             profileQuery.exec(["powerprofilesctl", "get"]);
     }
 
@@ -66,8 +72,9 @@ Item {
         if (!batteryPresent || !profileAvailable || profileSet.running)
             return;
         const profiles = ["power-saver", "balanced", "performance"];
-        const index = profiles.indexOf(activeProfile);
-        profileSet.exec(["powerprofilesctl", "set", profiles[(index + 1) % profiles.length]]);
+        const nextProfile = profiles[(profiles.indexOf(activeProfile) + 1) % profiles.length];
+        activeProfile = nextProfile;
+        profileSet.exec(["powerprofilesctl", "set", nextProfile]);
     }
 
     Primitives.Bubble {
@@ -107,7 +114,8 @@ Item {
                 return "";
             const time = root.charging ? (root.battery.timeToFull > 0 ? `Full in ${root.formatTime(root.battery.timeToFull)}` : "Charging") : (root.battery.timeToEmpty > 0 ? `${root.formatTime(root.battery.timeToEmpty)} remaining` : "");
             const profile = root.profileAvailable ? `Profile: ${root.activeProfile}` : "";
-            return [`Battery: ${root.percentage}%`, time, profile].filter(line => line.length > 0).join("\n");
+            const power = root.formatPower(root.battery.changeRate);
+            return [`Battery: ${root.percentage}%`, time, power, profile].filter(line => line.length > 0).join("\n");
         }
         hovered: mouseArea.containsMouse
     }
@@ -115,7 +123,8 @@ Item {
     Process {
         id: profileQuery
         stdout: StdioCollector {
-            onStreamFinished: root.activeProfile = text.trim()
+            onStreamFinished: if (!profileSet.running)
+                root.activeProfile = text.trim()
         }
     }
 
