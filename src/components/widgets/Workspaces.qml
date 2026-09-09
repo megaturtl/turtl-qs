@@ -13,6 +13,7 @@ Item {
 
     readonly property bool isNiri: Quickshell.env("NIRI_SOCKET") !== null
     property int hyprlandToplevelRevision: 0
+    property int desktopEntriesRevision: 0
     property var niriWorkspaces: []
     property var niriWindows: []
     readonly property var niriVisibleWorkspaces: {
@@ -37,6 +38,14 @@ Item {
         }
         function onObjectRemovedPost() {
             root.recomputeWorkspaceIds();
+        }
+    }
+
+    Connections {
+        target: DesktopEntries
+
+        function onApplicationsChanged() {
+            root.desktopEntriesRevision++;
         }
     }
 
@@ -65,56 +74,24 @@ Item {
 
     onNiriVisibleWorkspacesChanged: recomputeWorkspaceIds()
 
-    function iconFor(windowClass, title) {
-        if (/bitwarden/i.test(windowClass))
-            return "  ";
-        if (/stremio/i.test(windowClass))
-            return " 󰎁 ";
-        if (/firefox|librewolf|zen/i.test(windowClass))
-            return " 󰈹 ";
-        if (/kitty|konsole|ghostty|wezterm|foot|footclient/i.test(windowClass))
-            return "  ";
-        if (/thunderbird/i.test(windowClass))
-            return "   ";
-        if (/gmail/i.test(title))
-            return " 󰊫 ";
-        if (/discord|webcord|vesktop/i.test(windowClass))
-            return "  ";
-        if (/youtube/i.test(title))
-            return "   ";
-        if (/vlc/i.test(windowClass))
-            return " 󰕼 ";
-        if (/spotify/i.test(windowClass))
-            return " 󰓇 ";
-        if (/minecraft|prismlauncher|waywall/i.test(windowClass))
-            return " 󰍳 ";
-        if (/vscode|codium/i.test(windowClass))
-            return " 󰨞 ";
-        if (/github/i.test(title))
-            return " 󰊤 ";
-        if (/nvim/i.test(title))
-            return "  ";
-        if (/vim/i.test(title))
-            return "  ";
-        if (/jetbrains-idea/i.test(windowClass))
-            return "  ";
-        if (/polkit/i.test(windowClass))
-            return " 󰒃 ";
-        if (/pavucontrol|pwvucontrol/i.test(windowClass))
-            return " 󱡫 ";
-        if (/steam/i.test(windowClass))
-            return " 󰓓 ";
-        if (/dolphin|thunar|nemo/i.test(windowClass))
-            return " 󰉋 ";
-        if (/gimp/i.test(windowClass))
-            return "  ";
-        if (/tauon|feishin|audacious/i.test(windowClass))
-            return " 󰝚 ";
-        if (/logseq|affine|obsidian/i.test(windowClass))
-            return " 󰠮 ";
-        if (/obsproject/i.test(windowClass))
-            return " 󰄄 ";
-        return "";
+    function desktopEntryFor(identifiers) {
+        for (const identifier of identifiers) {
+            if (!identifier)
+                continue;
+            const entry = DesktopEntries.byId(identifier);
+            if (entry)
+                return entry;
+        }
+
+        for (const identifier of identifiers) {
+            if (!identifier)
+                continue;
+            const entry = DesktopEntries.heuristicLookup(identifier);
+            if (entry)
+                return entry;
+        }
+
+        return null;
     }
 
     function clientsFor(id) {
@@ -123,23 +100,21 @@ Item {
             if (!workspace)
                 return [];
             return niriWindows.filter(window => window.workspace_id === workspace.id).map(window => ({
-                        windowClass: window.app_id ?? "",
-                        title: window.title ?? ""
+                        identifiers: [window.app_id ?? ""]
                     }));
         }
 
         const workspace = Hyprland.workspaces.values.find(candidate => candidate.id === id);
         return workspace?.toplevels.values.map(window => ({
-                    windowClass: window.lastIpcObject?.["class"] ?? "",
-                    title: window.title ?? ""
+                    identifiers: [window.handle?.appId ?? "", window.lastIpcObject?.["class"] ?? ""]
                 })) ?? [];
     }
 
     function iconsFor(id) {
         const icons = [];
         for (const client of clientsFor(id)) {
-            const icon = iconFor(client.windowClass, client.title);
-            if (icon && icons.indexOf(icon) === -1)
+            const icon = desktopEntryFor(client.identifiers)?.icon;
+            if (icon && Quickshell.hasThemeIcon(icon) && icons.indexOf(icon) === -1)
                 icons.push(icon);
         }
         return icons;
@@ -221,39 +196,59 @@ Item {
             model: root.workspaceIds
 
             delegate: Primitives.Bubble {
-                id: workspace
+                id: workspaceBubble
                 required property int modelData
+                readonly property bool active: root.focused(modelData)
                 readonly property var icons: {
                     root.hyprlandToplevelRevision;
+                    root.desktopEntriesRevision;
                     return root.iconsFor(modelData);
                 }
-                readonly property bool active: root.focused(modelData)
+                readonly property var hyprlandWorkspace: {
+                    root.hyprlandToplevelRevision;
+                    return Hyprland.workspaces.values.find(candidate => candidate.id === workspaceBubble.modelData) ?? null;
+                }
 
                 width: Math.max(22, content.implicitWidth + 16)
                 height: Shell.Theme.widgetHeight
                 hovered: mouse.containsMouse
-                background: workspace.active ? Shell.Theme.lavender : Shell.Theme.bubbleBackground
-                accent: workspace.active ? Shell.Theme.lavender : Shell.Theme.bubbleHover
+                background: workspaceBubble.active ? Shell.Theme.lavender : Shell.Theme.bubbleBackground
+                accent: workspaceBubble.active ? Shell.Theme.lavender : Shell.Theme.bubbleHover
 
                 Row {
                     id: content
                     anchors.centerIn: parent
-                    spacing: 0
+                    spacing: 4
 
-                    Primitives.ThemeText {
-                        text: workspace.modelData
-                        color: workspace.active ? Shell.Theme.base : (workspace.icons.length ? Shell.Theme.text : Shell.Theme.overlay1)
-                        font.bold: workspace.active
+                    Item {
+                        width: workspaceNumber.implicitWidth
+                        height: Shell.Theme.widgetHeight
+
+                        Primitives.ThemeText {
+                            id: workspaceNumber
+                            anchors.centerIn: parent
+                            text: workspaceBubble.modelData
+                            color: workspaceBubble.active ? Shell.Theme.base : (workspaceBubble.icons.length ? Shell.Theme.text : Shell.Theme.overlay1)
+                            font.bold: workspaceBubble.active
+                        }
                     }
 
                     Repeater {
-                        model: workspace.icons
+                        model: workspaceBubble.icons
 
-                        delegate: Primitives.ThemeText {
+                        delegate: Item {
                             required property string modelData
-                            text: modelData
-                            color: workspace.active ? Shell.Theme.base : Shell.Theme.text
-                            font.bold: workspace.active
+                            width: 16
+                            height: Shell.Theme.widgetHeight
+
+                            Image {
+                                anchors.centerIn: parent
+                                width: 16
+                                height: 16
+                                source: Quickshell.iconPath(modelData)
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                            }
                         }
                     }
                 }
@@ -263,14 +258,21 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton
-                    onClicked: root.activate(workspace.modelData)
+                    onClicked: root.activate(workspaceBubble.modelData)
                     onWheel: wheel => root.scroll(wheel.angleDelta.y)
+                }
+
+                WorkspacePreview {
+                    target: mouse
+                    workspace: workspaceBubble.hyprlandWorkspace
+                    hovered: !root.isNiri && mouse.containsMouse
+                    revision: root.hyprlandToplevelRevision
                 }
 
                 Shell.BarTooltip {
                     target: mouse
-                    text: workspace.icons.length ? "Workspace " + workspace.modelData + "\n" + workspace.icons.join("").trim() : "Workspace " + workspace.modelData
-                    hovered: mouse.containsMouse
+                    text: "Workspace " + workspaceBubble.modelData
+                    hovered: root.isNiri && mouse.containsMouse
                 }
             }
         }
