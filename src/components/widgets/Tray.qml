@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Window
+import Quickshell
 import Quickshell.Services.SystemTray
 import ".." as Shell
 import "../primitives" as Primitives
@@ -56,16 +56,16 @@ Item {
                     }
                     onExited: root.itemHovered = false
                     onClicked: function (mouse) {
-                        const point = trayItem.mapToItem(null, 0, trayItem.height);
+                        const point = root.QsWindow.itemPosition(trayItem);
                         if (mouse.button === Qt.LeftButton) {
                             if (trayItem.modelData.onlyMenu)
-                                trayItem.modelData.display(root.Window.window, point.x, point.y);
+                                trayItem.modelData.display(root.QsWindow.window, point.x, point.y + trayItem.height);
                             else
                                 trayItem.modelData.activate();
                         } else if (mouse.button === Qt.MiddleButton) {
                             trayItem.modelData.secondaryActivate();
                         } else if (mouse.button === Qt.RightButton && trayItem.modelData.hasMenu) {
-                            trayItem.modelData.display(root.Window.window, point.x, point.y);
+                            trayItem.modelData.display(root.QsWindow.window, point.x, point.y + trayItem.height);
                         }
                     }
                     onWheel: function (wheel) {
