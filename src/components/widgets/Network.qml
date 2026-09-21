@@ -8,12 +8,13 @@ Item {
     id: root
 
     property var devices: Networking.devices ? Networking.devices.values : []
-    property var wiredDevice: findConnectedDevice(DeviceType.Wired)
-    property var wifiDevice: findConnectedDevice(DeviceType.Wifi)
-    property var activeDevice: wiredDevice || wifiDevice
+    property var wiredDevice: findConnectedDeviceOfType(DeviceType.Wired)
+    property var wifiDevice: findConnectedDeviceOfType(DeviceType.Wifi)
+    property string defaultRouteInterface: ""
+    property var activeDevice: findConnectedDevice(defaultRouteInterface) || wiredDevice || wifiDevice
     property string interfaceName: activeDevice ? activeDevice.name : ""
-    property var connectedNetwork: findConnectedNetwork(wifiDevice)
-    property string connectionType: wiredDevice ? "wired" : connectedNetwork ? "wifi" : "offline"
+    property var connectedNetwork: findConnectedNetwork(activeDevice && activeDevice.type === DeviceType.Wifi ? activeDevice : null)
+    property string connectionType: activeDevice && activeDevice.type === DeviceType.Wired ? "wired" : connectedNetwork ? "wifi" : "offline"
     property string ipAddress: ""
     property real rxRate: 0
     property real txRate: 0
@@ -26,7 +27,19 @@ Item {
     implicitWidth: bubble.implicitWidth
     implicitHeight: bubble.implicitHeight
 
-    function findConnectedDevice(type) {
+    function findConnectedDevice(name) {
+        if (!name)
+            return null;
+        const currentDevices = devices || [];
+        for (let index = 0; index < currentDevices.length; index++) {
+            const device = currentDevices[index];
+            if (device && device.name === name && device.connected)
+                return device;
+        }
+        return null;
+    }
+
+    function findConnectedDeviceOfType(type) {
         const currentDevices = devices || [];
         for (let index = 0; index < currentDevices.length; index++) {
             const device = currentDevices[index];
@@ -122,6 +135,15 @@ Item {
             refreshAddress();
     }
 
+    function refreshDefaultRoute() {
+        if (!routeProcess.running)
+            routeProcess.exec(["sh", "-c", "ip -4 route show default | awk '{ for (field = 1; field < NF; field++) if ($field == \"dev\") { print $(field + 1); exit } }'"]);
+    }
+
+    function completeDefaultRouteRefresh(interfaceName) {
+        defaultRouteInterface = interfaceName.trim();
+    }
+
     onInterfaceNameChanged: {
         previousRx = 0;
         previousTx = 0;
@@ -177,6 +199,13 @@ Item {
     }
 
     Process {
+        id: routeProcess
+        stdout: StdioCollector {
+            onStreamFinished: root.completeDefaultRouteRefresh(text)
+        }
+    }
+
+    Process {
         id: trafficProcess
         stdout: StdioCollector {
             onStreamFinished: root.consumeTraffic(text)
@@ -196,6 +225,14 @@ Item {
         repeat: true
         triggeredOnStart: true
         onTriggered: root.refreshAddress()
+    }
+
+    Timer {
+        interval: Shell.Theme.networkTrafficInterval
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.refreshDefaultRoute()
     }
 
     Timer {
