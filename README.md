@@ -25,6 +25,11 @@ quickshell --config default
 
 Home Manager puts the config in `~/.config/quickshell/default`.
 
+## Monitors
+
+The bar uses the first monitor available at startup. If you disconnect that
+monitor, the bar hides until you reconnect it.
+
 ## Development
 
 ```sh

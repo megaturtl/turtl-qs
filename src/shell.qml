@@ -8,12 +8,24 @@ import "components" as Shell
 ShellRoot {
     id: root
 
+    property var screens: Quickshell.screens
+    property string barScreenName: ""
+    readonly property var barScreens: barScreenName === "" ? [] : screens.filter(screen => screen.name === barScreenName)
+
+    function rememberBarScreen() {
+        if (barScreenName === "" && screens.length > 0)
+            barScreenName = screens[0].name;
+    }
+
+    onScreensChanged: rememberBarScreen()
+    Component.onCompleted: rememberBarScreen()
+
     Shell.Osd {
         id: osdState
     }
 
     Variants {
-        model: Quickshell.screens.length > 0 ? [Quickshell.screens[0]] : []
+        model: root.barScreens
 
         PanelWindow {
             required property var modelData
@@ -38,7 +50,7 @@ ShellRoot {
     }
 
     Variants {
-        model: Quickshell.screens
+        model: root.screens
 
         PanelWindow {
             required property var modelData
