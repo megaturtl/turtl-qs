@@ -34,17 +34,24 @@
 
     devShells = forEachSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
+      windowIcons = import ./window-icons.nix {inherit pkgs;};
     in {
       default = pkgs.mkShellNoCC {
-        packages = [pkgs.qt6.qtdeclarative pkgs.quickshell];
+        packages = [
+          pkgs.qt6.qtdeclarative
+          pkgs.quickshell
+          windowIcons
+          (pkgs.python3.withPackages (ps: [ps.python-xlib ps.pillow]))
+        ];
       };
     });
 
     apps = forEachSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
+      windowIcons = import ./window-icons.nix {inherit pkgs;};
       runner = pkgs.writeShellApplication {
         name = "run-quickshell";
-        runtimeInputs = [pkgs.quickshell];
+        runtimeInputs = [pkgs.quickshell windowIcons];
         text = ''
           exec quickshell --path "$PWD/src" "$@"
         '';

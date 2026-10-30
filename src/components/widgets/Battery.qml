@@ -57,10 +57,11 @@ Item {
         return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
     }
 
-    function formatPower(rate) {
+    function formatPower(rate, state) {
         if (!Number.isFinite(rate) || rate === 0)
             return "";
-        return `Power: ${rate > 0 ? "+" : "-"}${Math.abs(rate).toFixed(1)} W`;
+        const sign = state === UPowerDeviceState.Discharging ? "-" : state === UPowerDeviceState.Charging ? "+" : "";
+        return `Power: ${sign}${Math.abs(rate).toFixed(1)} W`;
     }
 
     function refreshProfile() {
@@ -114,7 +115,7 @@ Item {
                 return "";
             const time = root.charging ? (root.battery.timeToFull > 0 ? `Full in ${root.formatTime(root.battery.timeToFull)}` : "Charging") : (root.battery.timeToEmpty > 0 ? `${root.formatTime(root.battery.timeToEmpty)} remaining` : "");
             const profile = root.profileAvailable ? `Profile: ${root.activeProfile}` : "";
-            const power = root.formatPower(root.battery.changeRate);
+            const power = root.formatPower(root.battery.changeRate, root.battery.state);
             return [`Battery: ${root.percentage}%`, time, power, profile].filter(line => line.length > 0).join("\n");
         }
         hovered: mouseArea.containsMouse

@@ -9,6 +9,7 @@ PopupWindow {
     property var workspace: null
     property bool hovered: false
     property int revision: 0
+    required property var iconResolver
 
     property real canvasWidth: 224
     property bool hasMonitorGeometry: workspace?.monitor?.width > 0 && workspace?.monitor?.height > 0
@@ -57,11 +58,6 @@ PopupWindow {
                 return entry;
         }
         return null;
-    }
-
-    function iconFor(toplevel) {
-        const iconName = desktopEntryFor(toplevel)?.icon ?? "";
-        return iconName && Quickshell.hasThemeIcon(iconName) ? iconName : "";
     }
 
     function titleFor(toplevel) {
@@ -131,13 +127,11 @@ PopupWindow {
                     clip: true
 
                     Image {
-                        property string iconName: root.iconFor(windowPreview.modelData)
-
+                        source: root.iconResolver(windowPreview.modelData)
                         anchors.centerIn: parent
                         width: 32
                         height: 32
-                        visible: iconName.length > 0
-                        source: iconName ? Quickshell.iconPath(iconName) : ""
+                        fillMode: Image.PreserveAspectFit
                     }
 
                     Rectangle {

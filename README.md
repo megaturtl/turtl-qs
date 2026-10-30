@@ -35,6 +35,14 @@ monitor, the bar hides until you reconnect it.
 Click the time or date to show the current month's calendar. Click again to
 close it. The calendar highlights today and uses your locale's weekday order.
 
+## Workspace icons
+
+The workspace widget uses desktop-entry icons, or window icons from XWayland apps if available. Apps without a discoverable icon show a generic window icon.
+
+Native Wayland apps need a matching desktop entry to show their application icon.
+The helper uses python-xlib for X11 access and Pillow for PNG encoding.
+These are included in the flake.
+
 ## Development
 
 ```sh

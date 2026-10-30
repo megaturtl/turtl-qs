@@ -16,6 +16,8 @@ Item {
     property int desktopEntriesRevision: 0
     property var niriWorkspaces: []
     property var niriWindows: []
+    property var windowIcons: ({})
+    readonly property string fallbackIcon: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="' + Shell.Theme.text + '" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 8h20M6 5.5h.01M9 5.5h.01"/></svg>')
     readonly property var niriVisibleWorkspaces: {
         const focused = niriWorkspaces.find(workspace => workspace.is_focused);
         return niriWorkspaces.filter(workspace => workspace.output === focused?.output);
@@ -29,7 +31,10 @@ Item {
             workspaceIds = next;
     }
 
-    Component.onCompleted: recomputeWorkspaceIds()
+    Component.onCompleted: {
+        recomputeWorkspaceIds();
+        refreshWindowIcons();
+    }
 
     Connections {
         target: Hyprland.workspaces
@@ -59,7 +64,10 @@ Item {
     Timer {
         id: hyprlandToplevelRevisionTimer
         interval: 50
-        onTriggered: root.hyprlandToplevelRevision++
+        onTriggered: {
+            root.hyprlandToplevelRevision++;
+            root.refreshWindowIcons();
+        }
     }
 
     Connections {
@@ -100,21 +108,33 @@ Item {
             if (!workspace)
                 return [];
             return niriWindows.filter(window => window.workspace_id === workspace.id).map(window => ({
-                        identifiers: [window.app_id ?? ""]
+                        identifiers: [window.app_id ?? ""],
+                        pid: window.pid
                     }));
         }
 
         const workspace = Hyprland.workspaces.values.find(candidate => candidate.id === id);
         return workspace?.toplevels.values.map(window => ({
-                    identifiers: [window.handle?.appId ?? "", window.lastIpcObject?.["class"] ?? ""]
+                    identifiers: [window.handle?.appId ?? "", window.lastIpcObject?.["class"] ?? ""],
+                    pid: window.lastIpcObject?.pid
                 })) ?? [];
+    }
+
+    function iconFor(client) {
+        const windowIcon = windowIcons[String(client.pid)];
+        if (windowIcon)
+            return windowIcon;
+        const icon = desktopEntryFor(client.identifiers)?.icon ?? "";
+        if (icon.startsWith("/"))
+            return "file://" + icon.split("/").map(encodeURIComponent).join("/");
+        return icon && Quickshell.hasThemeIcon(icon) ? Quickshell.iconPath(icon) : fallbackIcon;
     }
 
     function iconsFor(id) {
         const icons = [];
         for (const client of clientsFor(id)) {
-            const icon = desktopEntryFor(client.identifiers)?.icon;
-            if (icon && Quickshell.hasThemeIcon(icon) && icons.indexOf(icon) === -1)
+            const icon = iconFor(client);
+            if (icons.indexOf(icon) === -1)
                 icons.push(icon);
         }
         return icons;
@@ -143,9 +163,29 @@ Item {
         }
     }
 
+    function refreshWindowIcons() {
+        if (Quickshell.env("DISPLAY") !== null && !windowIconsProcess.running)
+            windowIconsProcess.running = true;
+    }
+
+    Process {
+        id: windowIconsProcess
+        command: ["turtl-window-icons"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.windowIcons = JSON.parse(text);
+                } catch (_) {
+                    root.windowIcons = ({});
+                }
+            }
+        }
+    }
+
     function pollNiri() {
         if (!isNiri)
             return;
+        refreshWindowIcons();
         if (!niriWorkspacesProcess.running)
             niriWorkspacesProcess.running = true;
         if (!niriWindowsProcess.running)
@@ -245,7 +285,7 @@ Item {
                                 anchors.centerIn: parent
                                 width: 16
                                 height: 16
-                                source: Quickshell.iconPath(modelData)
+                                source: modelData
                                 fillMode: Image.PreserveAspectFit
                                 smooth: true
                             }
@@ -267,6 +307,10 @@ Item {
                     workspace: workspaceBubble.hyprlandWorkspace
                     hovered: !root.isNiri && mouse.containsMouse
                     revision: root.hyprlandToplevelRevision
+                    iconResolver: toplevel => root.iconFor({
+                            identifiers: [toplevel.handle?.appId ?? "", toplevel.lastIpcObject?.["class"] ?? ""],
+                            pid: toplevel.lastIpcObject?.pid
+                        })
                 }
 
                 Shell.BarTooltip {
