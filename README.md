@@ -62,6 +62,8 @@ precedence when the process ID and window class match unambiguously.
 Niri uses desktop entries because its satellite windows do not expose
 a reliable X11 window identity. The packaged X11 helper uses python-xlib
 and Pillow.
+If an icon scan reaches its work or time limit, missing icons fall back
+to the desktop entry or generic icon.
 
 ## Development
 

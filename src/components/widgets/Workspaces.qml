@@ -217,12 +217,13 @@ Item {
         id: windowIconsProcess
         command: ["turtl-window-icons"]
         stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    root.windowIcons = JSON.parse(text);
-                } catch (_) {
-                    root.windowIcons = ({});
-                }
+            id: iconOutput
+        }
+        onExited: (code, status) => {
+            try {
+                root.windowIcons = code === 0 && status === 0 ? JSON.parse(iconOutput.text) : {};
+            } catch (_) {
+                root.windowIcons = ({});
             }
         }
     }

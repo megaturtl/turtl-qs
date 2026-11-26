@@ -4,6 +4,7 @@
 import base64
 import json
 import os
+import signal
 import struct
 from io import BytesIO
 
@@ -12,6 +13,8 @@ from Xlib import Xatom, display, error
 
 MAX_DIMENSION = 1024
 MAX_PROPERTY_ITEMS = 2 * 1024 * 1024
+MAX_TOTAL_PROPERTY_ITEMS = 8 * MAX_PROPERTY_ITEMS
+MAX_ICONS = 128
 MAX_WINDOWS = 16384
 
 
@@ -90,7 +93,10 @@ def read_window_icons():
                 continue
 
         icons = {}
+        remaining = MAX_TOTAL_PROPERTY_ITEMS
         for pid, window in candidates.items():
+            if not remaining or len(icons) == MAX_ICONS:
+                break
             if window is None:
                 continue
             try:
@@ -100,11 +106,17 @@ def read_window_icons():
                 parts = wm_class.value.split(b"\0")
                 if len(parts) != 3 or not parts[1] or parts[2]:
                     continue
-                values = property_values(
-                    window, icon_atom, Xatom.CARDINAL, MAX_PROPERTY_ITEMS
+                prop = window.get_property(
+                    icon_atom, Xatom.CARDINAL, 0, min(MAX_PROPERTY_ITEMS, remaining)
                 )
-                image = decode_icon_property(values)
+                if prop is None or prop.property_type != Xatom.CARDINAL:
+                    continue
+                remaining -= (len(prop.value) * prop.format + 31) // 32
+                if prop.format != 32 or prop.bytes_after:
+                    continue
+                image = decode_icon_property(prop.value)
                 if image is not None:
+                    image.thumbnail((32, 32), Image.Resampling.LANCZOS)
                     png = BytesIO()
                     image.save(png, format="PNG")
                     icons[str(pid)] = {
@@ -121,4 +133,6 @@ def read_window_icons():
 
 
 if __name__ == "__main__":
+    # Death of the launching shell must not remove the scan deadline.
+    signal.alarm(2)
     print(json.dumps(read_window_icons(), separators=(",", ":")))
