@@ -8,8 +8,9 @@ Item {
     id: root
 
     property var battery: UPower.displayDevice
-    property string activeProfile: ""
-    property bool profileAvailable: activeProfile.length > 0
+    property var profileState: null
+    readonly property string activeProfile: profileState?.active ?? ""
+    readonly property bool profileAvailable: activeProfile.length > 0
     property bool batteryPresent: battery && battery.ready && battery.isLaptopBattery && battery.powerSupply && battery.isPresent
     property bool charging: batteryPresent && battery.state === UPowerDeviceState.Charging
     property int percentage: batteryPresent ? Math.round(battery.percentage * 100) : 0
@@ -64,18 +65,34 @@ Item {
         return `Power: ${sign}${Math.abs(rate).toFixed(1)} W`;
     }
 
+    function readProfiles(output) {
+        let active = "";
+        const profiles = [];
+        for (const line of output.split("\n")) {
+            const heading = /^([* ]) ([a-z0-9-]+):$/.exec(line);
+            if (!heading)
+                continue;
+            profiles.unshift(heading[2]);
+            if (heading[1] === "*")
+                active = heading[2];
+        }
+        profileState = active ? {
+            active,
+            profiles
+        } : null;
+    }
+
     function refreshProfile() {
         if (batteryPresent && Shell.SessionTools.has("powerprofilesctl") && !profileQuery.running && !profileSet.running)
-            profileQuery.exec(["powerprofilesctl", "get"]);
+            profileQuery.running = true;
     }
 
     function cycleProfile() {
-        if (!batteryPresent || !profileAvailable || profileSet.running)
+        if (!batteryPresent || !profileAvailable || profileQuery.running || profileSet.running)
             return;
-        const profiles = ["power-saver", "balanced", "performance"];
-        const nextProfile = profiles[(profiles.indexOf(activeProfile) + 1) % profiles.length];
-        activeProfile = nextProfile;
-        profileSet.exec(["powerprofilesctl", "set", nextProfile]);
+        const profiles = profileState.profiles;
+        if (profiles.length > 1)
+            profileSet.exec(["powerprofilesctl", "set", profiles[(profiles.indexOf(activeProfile) + 1) % profiles.length]]);
     }
 
     Primitives.Bubble {
@@ -123,26 +140,24 @@ Item {
 
     Process {
         id: profileQuery
+        command: ["powerprofilesctl", "list"]
+        environment: ({
+                LC_ALL: "C"
+            })
         stdout: StdioCollector {
-            onStreamFinished: if (!profileSet.running)
-                root.activeProfile = text.trim()
+            id: profileOutput
         }
+        onExited: (code, status) => root.readProfiles(code === 0 && status === 0 ? profileOutput.text : "")
     }
 
     Process {
         id: profileSet
-        onExited: profileRefresh.restart()
-    }
-
-    Timer {
-        id: profileRefresh
-        interval: Shell.Theme.batteryProfileRefreshDelay
-        onTriggered: root.refreshProfile()
+        onExited: root.refreshProfile()
     }
 
     Timer {
         interval: Shell.Theme.batteryPollInterval
-        running: root.batteryPresent
+        running: root.batteryPresent && Shell.SessionTools.has("powerprofilesctl")
         repeat: true
         triggeredOnStart: true
         onTriggered: root.refreshProfile()

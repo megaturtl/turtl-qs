@@ -51,7 +51,6 @@ QtObject {
     readonly property int tooltipDelay: 400
     readonly property int osdStartupDelay: 800
     readonly property int osdTimeout: 1500
-    readonly property int batteryProfileRefreshDelay: 250
     readonly property int batteryPollInterval: 10000
     readonly property int clockInterval: 1000
     readonly property int hardwarePollInterval: 2000

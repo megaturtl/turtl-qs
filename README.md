@@ -34,6 +34,8 @@ Host-owned integrations are not installed or enabled by the module. Put
 on the session's PATH only for the integrations you want. SwayNC and power
 profiles also need their corresponding services; configure and test your
 locker separately. On Niri, the native `niri` client must be on the session PATH.
+The battery widget cycles only the profiles reported by the daemon and shows
+a change only after the daemon reports the new active profile.
 
 ## Monitors
 
