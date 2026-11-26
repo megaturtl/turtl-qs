@@ -24,6 +24,9 @@ quickshell --config default
 ```
 
 Home Manager puts the config in `~/.config/quickshell/default`.
+Set `programs.quickshell.enable = false` to disable the installation, or set
+`programs.quickshell.activeConfig` to select another installed config for
+Home Manager's optional Quickshell service.
 
 Run in a supported Wayland session (Hyprland or Niri). Install a JetBrainsMono
 Nerd Font for the bar glyphs. The network widget reads links from NetworkManager.
