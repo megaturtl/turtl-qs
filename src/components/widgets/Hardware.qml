@@ -22,7 +22,7 @@ Item {
     property real swapUsed: 0
     property real swapTotal: 0
     property var previousOverall: null
-    property var previousCores: []
+    property var previousCores: ({})
     property string temperaturePath: ""
     readonly property string temperatureDiscoveryCommand: "for zone in /sys/class/thermal/thermal_zone*; do\n" + "    type=$(cat \"$zone/type\" 2>/dev/null) || continue\n" + "    case \"$type\" in\n" + "        x86_pkg_temp|cpu-thermal|cpu_thermal|soc_thermal)\n" + "            [ -r \"$zone/temp\" ] && { printf '%s\\n' \"$zone/temp\"; exit 0; }\n" + "            ;;\n" + "    esac\n" + "done\n" + "for hwmon in /sys/class/hwmon/hwmon*; do\n" + "    name=$(cat \"$hwmon/name\" 2>/dev/null) || continue\n" + "    case \"$name\" in\n" + "        coretemp|k10temp|zenpower|cpu_thermal) ;;\n" + "        *) continue ;;\n" + "    esac\n" + "    for input in \"$hwmon\"/temp*_input; do\n" + "        label=$(cat \"${input%_input}_label\" 2>/dev/null)\n" + "        case \"$label\" in\n" + "            \"Package id \"*|Tctl|Tdie|CPU*) printf '%s\\n' \"$input\"; exit 0 ;;\n" + "        esac\n" + "    done\n" + "    for input in \"$hwmon\"/temp*_input; do\n" + "        [ -r \"$input\" ] && { printf '%s\\n' \"$input\"; exit 0; }\n" + "    done\n" + "done\n"
 
@@ -39,10 +39,11 @@ Item {
 
     function percent(current, previous) {
         const totalDelta = current.total - previous.total;
-        return totalDelta <= 0 ? 0 : Math.round((1 - (current.idle - previous.idle) / totalDelta) * 100);
+        const idleDelta = current.idle - previous.idle;
+        return totalDelta <= 0 || idleDelta < 0 ? 0 : Math.max(0, Math.round((1 - idleDelta / totalDelta) * 100));
     }
 
-    function parseMemory() {
+    function parseMemory(memoryText) {
         const values = {};
         const lines = memoryText.split("\n");
         for (let index = 0; index < lines.length; index++) {
@@ -61,30 +62,37 @@ Item {
         };
     }
 
-    function updateCpu() {
-        const lines = cpuText.split("\n");
+    function updateCpu(cpuText) {
         let aggregate = null;
-        const coreStats = [];
-        for (let index = 0; index < lines.length; index++) {
-            if (/^cpu\s/.test(lines[index]))
-                aggregate = parseStat(lines[index]);
-            else if (/^cpu\d+\s/.test(lines[index]))
-                coreStats.push(parseStat(lines[index]));
+        const coreStats = {};
+        const percentages = [];
+        for (const line of cpuText.split("\n")) {
+            const match = /^cpu(\d+)?\s/.exec(line);
+            if (!match)
+                continue;
+            const sample = parseStat(line);
+            const id = match[1];
+            if (id === undefined) {
+                aggregate = sample;
+            } else {
+                const previous = previousCores[id];
+                percentages.push({
+                    id,
+                    usage: previous ? percent(sample, previous) : 0
+                });
+                coreStats[id] = sample;
+            }
         }
-
-        if (aggregate) {
-            overall = previousOverall ? percent(aggregate, previousOverall) : 0;
-            const percentages = [];
-            for (let index = 0; index < coreStats.length; index++)
-                percentages.push(previousCores[index] ? percent(coreStats[index], previousCores[index]) : 0);
-            cores = percentages;
-            previousOverall = aggregate;
-            previousCores = coreStats;
-        }
+        if (!aggregate)
+            return;
+        overall = previousOverall ? percent(aggregate, previousOverall) : 0;
+        cores = percentages;
+        previousOverall = aggregate;
+        previousCores = coreStats;
     }
 
-    function updateMemory() {
-        const memory = parseMemory();
+    function updateMemory(memoryText) {
+        const memory = parseMemory(memoryText);
         memUsed = memory.used;
         memTotal = memory.total;
         swapUsed = memory.swapUsed;
@@ -93,17 +101,20 @@ Item {
     }
 
     function updateTemp(rawTemperature) {
-        const degrees = Number(rawTemperature.trim());
-        temperature = Number.isFinite(degrees) ? Math.round(degrees / 1000) + "°" : "N/A";
+        const value = rawTemperature.trim();
+        if (!/^-?\d+$/.test(value) || !Number.isFinite(Number(value))) {
+            temperature = "N/A";
+            temperaturePath = "";
+            return;
+        }
+        temperature = Math.round(Number(value) / 1000) + "°";
     }
 
     function poll() {
-        if (!cpuProcess.running)
-            cpuProcess.exec(["cat", "/proc/stat"]);
-        if (!memoryProcess.running)
-            memoryProcess.exec(["cat", "/proc/meminfo"]);
-        if (temperaturePath.length > 0 && !temperatureProcess.running)
-            temperatureProcess.exec(["cat", temperaturePath]);
+        cpuFile.reload();
+        memoryFile.reload();
+        if (temperaturePath)
+            temperatureFile.reload();
     }
 
     function pad3(value) {
@@ -112,16 +123,15 @@ Item {
     function formatCores() {
         const lines = [];
         for (let index = 0; index < cores.length; index += 2) {
-            let line = "Core " + index + ": " + cores[index] + "%";
-            if (index + 1 < cores.length)
-                line += "  Core " + (index + 1) + ": " + cores[index + 1] + "%";
+            const first = cores[index];
+            const second = cores[index + 1];
+            let line = `Core ${first.id}: ${first.usage}%`;
+            if (second)
+                line += `  Core ${second.id}: ${second.usage}%`;
             lines.push(line);
         }
         return lines.join("\n");
     }
-
-    property string cpuText: ""
-    property string memoryText: ""
 
     Row {
         id: content
@@ -155,49 +165,44 @@ Item {
         hovered: mouse.containsMouse
     }
 
-    Process {
-        id: cpuProcess
-        command: ["cat", "/proc/stat"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.cpuText = text;
-                root.updateCpu();
-            }
-        }
-        stderr: StdioCollector {}
+    FileView {
+        id: cpuFile
+        path: "/proc/stat"
+        onTextChanged: root.updateCpu(text())
     }
 
-    Process {
-        id: memoryProcess
-        command: ["cat", "/proc/meminfo"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.memoryText = text;
-                root.updateMemory();
-            }
-        }
-        stderr: StdioCollector {}
+    FileView {
+        id: memoryFile
+        path: "/proc/meminfo"
+        onTextChanged: root.updateMemory(text())
     }
 
     Process {
         id: temperaturePathProcess
-        running: true
         command: ["sh", "-c", root.temperatureDiscoveryCommand]
         stdout: StdioCollector {
-            onStreamFinished: {
-                root.temperaturePath = text.trim();
-                root.poll();
-            }
+            onStreamFinished: root.temperaturePath = text.trim()
         }
         stderr: StdioCollector {}
     }
 
-    Process {
-        id: temperatureProcess
-        stdout: StdioCollector {
-            onStreamFinished: root.updateTemp(text)
-        }
-        stderr: StdioCollector {}
+    FileView {
+        id: temperatureFile
+        path: root.temperaturePath
+        printErrors: false
+        onTextChanged: if (path)
+            root.updateTemp(text())
+        onLoadFailed: root.updateTemp("")
+    }
+
+    Component.onCompleted: temperaturePathProcess.running = true
+
+    Timer {
+        interval: 10000
+        running: !root.temperaturePath
+        repeat: true
+        onTriggered: if (!temperaturePathProcess.running)
+            temperaturePathProcess.running = true
     }
 
     Timer {
