@@ -39,6 +39,8 @@ locker separately. On Niri, the native `niri` client must be on the session PATH
 
 The bar uses the first monitor available at startup. If you disconnect that
 monitor, the bar hides until you reconnect it.
+On narrow outputs, drag a crowded group horizontally to reach the rest
+of its controls.
 
 ## Clock
 
