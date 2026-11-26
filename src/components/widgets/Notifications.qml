@@ -14,27 +14,16 @@ Item {
         hovered: mouse.containsMouse
     }
 
-    property int count: 0
-    property bool doNotDisturb: false
-    property bool refreshPending: false
-    property int refreshesRunning: 0
+    property var snapshot: null
 
-    function refresh() {
-        if (refreshesRunning > 0) {
-            refreshPending = true;
-            return;
+    function consumeSnapshot(line) {
+        try {
+            const next = JSON.parse(line);
+            if (Number.isSafeInteger(next?.count) && next.count >= 0 && typeof next.dnd === "boolean")
+                snapshot = next;
+        } catch (_) {
+            // Keep the last complete snapshot while the stream is open.
         }
-
-        refreshPending = false;
-        refreshesRunning = 2;
-        countProcess.running = true;
-        dndProcess.running = true;
-    }
-
-    function completeRefresh() {
-        refreshesRunning -= 1;
-        if (refreshesRunning === 0 && refreshPending)
-            refresh();
     }
 
     Row {
@@ -43,13 +32,13 @@ Item {
         spacing: 4
 
         Primitives.ThemeText {
-            text: root.doNotDisturb ? "󰂛" : root.count > 0 ? "󰂚" : "󰂜"
-            color: root.doNotDisturb ? Shell.Theme.overlay0 : Shell.Theme.yellow
+            text: root.snapshot?.dnd ? "󰂛" : root.snapshot?.count > 0 ? "󰂚" : "󰂜"
+            color: root.snapshot && !root.snapshot.dnd ? Shell.Theme.yellow : Shell.Theme.overlay0
         }
 
         Primitives.ThemeText {
-            text: root.count
-            color: root.doNotDisturb ? Shell.Theme.overlay0 : Shell.Theme.yellow
+            text: root.snapshot?.count ?? "–"
+            color: root.snapshot && !root.snapshot.dnd ? Shell.Theme.yellow : Shell.Theme.overlay0
         }
     }
 
@@ -59,40 +48,18 @@ Item {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
         onClicked: function (mouse) {
+            if (!root.snapshot)
+                return;
             if (mouse.button === Qt.LeftButton)
                 Quickshell.execDetached(["swaync-client", "-t", "-sw"]);
             else if (mouse.button === Qt.RightButton)
-                Quickshell.execDetached(["swaync-client", "-C"]);
+                Quickshell.execDetached(["swaync-client", "-C", "-sw"]);
         }
     }
     Shell.BarTooltip {
         target: mouse
-        text: root.count + " notification" + (root.count === 1 ? "" : "s") + "\nDo Not Disturb: " + (root.doNotDisturb ? "on" : "off") + "\n────────────────\nLeft · toggle panel\nRight · clear all"
+        text: root.snapshot ? root.snapshot.count + " notification" + (root.snapshot.count === 1 ? "" : "s") + "\nDo Not Disturb: " + (root.snapshot.dnd ? "on" : "off") + "\n────────────────\nLeft · toggle panel\nRight · clear all" : "Waiting for notification state"
         hovered: mouse.containsMouse
-    }
-
-    Process {
-        id: countProcess
-        command: ["swaync-client", "-c"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.count = Number(text.trim()) || 0;
-                root.completeRefresh();
-            }
-        }
-        stderr: StdioCollector {}
-    }
-
-    Process {
-        id: dndProcess
-        command: ["swaync-client", "-D"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.doNotDisturb = text.trim() === "true";
-                root.completeRefresh();
-            }
-        }
-        stderr: StdioCollector {}
     }
 
     Process {
@@ -100,10 +67,14 @@ Item {
         running: true
         command: ["swaync-client", "--subscribe"]
         stdout: SplitParser {
-            onRead: root.refresh()
+            onRead: line => root.consumeSnapshot(line)
         }
-        stderr: StdioCollector {}
-        onExited: reconnect.start()
+        onRunningChanged: {
+            if (!running) {
+                root.snapshot = null;
+                reconnect.restart();
+            }
+        }
     }
 
     Timer {
@@ -111,6 +82,4 @@ Item {
         interval: Shell.Theme.notificationReconnectDelay
         onTriggered: subscription.running = true
     }
-
-    Component.onCompleted: refresh()
 }
