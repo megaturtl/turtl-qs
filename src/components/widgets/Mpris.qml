@@ -9,32 +9,31 @@ Item {
     implicitWidth: player ? 240 : 0
     implicitHeight: Shell.Theme.widgetHeight
 
-    property var player: null
+    readonly property var availablePlayers: Mpris.players.values.filter(candidate => !candidate.dbusName.includes("playerctld"))
+    readonly property var playing: availablePlayers.find(candidate => candidate.isPlaying) ?? null
     property var lastPlaying: null
-    property real positionAnchor: 0
-    property double positionAnchorTime: Date.now()
-    property real displayedPosition: 0
+    readonly property var player: playing ?? selectFallback()
+    readonly property real elapsed: player?.positionSupported ? Math.max(0, player.position) : -1
+    readonly property bool durationKnown: (player?.lengthSupported ?? false) && player.length > 0
+    readonly property string trackTime: {
+        const position = formatTime(elapsed);
+        return durationKnown && position ? position + "/" + formatTime(player.length) : position;
+    }
 
-    function players() {
-        return Mpris.players.values.filter(candidate => !candidate.dbusName.includes("playerctld"));
+    onPlayingChanged: {
+        if (playing)
+            lastPlaying = playing;
+    }
+
+    function selectFallback() {
+        if (lastPlaying && availablePlayers.includes(lastPlaying))
+            return lastPlaying;
+        const paused = availablePlayers.filter(candidate => candidate.playbackState === MprisPlaybackState.Paused);
+        return paused.find(candidate => !isBrowser(candidate)) ?? paused[0] ?? availablePlayers[0] ?? null;
     }
 
     function isBrowser(player) {
         return /firefox|chrome|chromium/i.test(player.dbusName);
-    }
-
-    function selectPlayer() {
-        const available = players();
-        const playing = available.find(candidate => candidate.isPlaying);
-        if (playing)
-            return playing;
-        if (lastPlaying) {
-            const previous = available.find(candidate => candidate.dbusName === lastPlaying.dbusName);
-            if (previous)
-                return previous;
-        }
-        const paused = available.filter(candidate => candidate.playbackState === MprisPlaybackState.Paused);
-        return paused.find(candidate => !isBrowser(candidate)) ?? paused[0] ?? available[0] ?? null;
     }
 
     function iconFor(player) {
@@ -51,42 +50,11 @@ Item {
         return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
     }
 
-    function syncPosition() {
-        positionAnchor = player?.position ?? 0;
-        positionAnchorTime = Date.now();
-        displayedPosition = positionAnchor;
-    }
-
     Timer {
         interval: Shell.Theme.mprisPositionInterval
-        running: true
+        running: (root.player?.isPlaying ?? false) && root.player.positionSupported
         repeat: true
-        onTriggered: {
-            const selected = root.selectPlayer();
-            if (selected?.isPlaying)
-                root.lastPlaying = selected;
-            if (selected !== root.player)
-                root.player = selected;
-            if (!root.player)
-                return;
-            const elapsed = root.player.isPlaying ? (Date.now() - root.positionAnchorTime) / 1000 * root.player.rate : 0;
-            root.displayedPosition = Math.max(0, Math.min(root.player.length || 0, root.positionAnchor + elapsed));
-        }
-    }
-
-    onPlayerChanged: syncPosition()
-
-    Connections {
-        target: root.player
-        function onPositionChanged() {
-            root.syncPosition();
-        }
-        function onPlaybackStateChanged() {
-            root.syncPosition();
-        }
-        function onRateChanged() {
-            root.syncPosition();
-        }
+        onTriggered: root.player.positionChanged()
     }
 
     Primitives.Bubble {
@@ -174,13 +142,14 @@ Item {
             Rectangle {
                 id: progressTrack
                 x: Shell.Theme.mprisProgressInset
+                visible: root.durationKnown && root.elapsed >= 0
                 width: parent.width - Shell.Theme.mprisProgressInset * 2
                 height: Shell.Theme.mprisProgressHeight
                 radius: height / 2
                 color: Shell.Theme.surface0
 
                 Rectangle {
-                    width: parent.width * (root.player?.length > 0 ? root.displayedPosition / root.player.length : 0)
+                    width: parent.width * (progressTrack.visible ? Math.min(1, root.elapsed / root.player.length) : 0)
                     height: parent.height
                     radius: parent.radius
                     color: Shell.Theme.pink
@@ -211,7 +180,7 @@ Item {
     }
     Shell.BarTooltip {
         target: mouse
-        text: root.player ? [root.player.trackTitle, root.player.trackArtist, root.player.trackAlbum, root.formatTime(root.displayedPosition) + "/" + root.formatTime(root.player.length), "────────────────", "Left · play/pause", "Middle · previous", "Right · next", "Scroll · seek 5 seconds"].filter(Boolean).join("\n") : ""
+        text: root.player ? [root.player.trackTitle, root.player.trackArtist, root.player.trackAlbum, root.trackTime, "────────────────", "Left · play/pause", "Middle · previous", "Right · next", "Scroll · seek 5 seconds"].filter(Boolean).join("\n") : ""
         hovered: mouse.containsMouse
     }
 }
