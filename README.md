@@ -28,6 +28,8 @@ Home Manager puts the config in `~/.config/quickshell/default`.
 Run in a supported Wayland session (Hyprland or Niri). Install a JetBrainsMono
 Nerd Font for the bar glyphs. The network widget reads links from NetworkManager.
 PipeWire provides audio state and UPower provides battery state.
+Network route preference and tooltip addresses are IPv4. The link indicator
+does not test Internet connectivity.
 
 Host-owned integrations are not installed or enabled by the module. Put
 `swaync-client`, `pwvucontrol`, `wlogout`, `hyprlock`, and `powerprofilesctl`

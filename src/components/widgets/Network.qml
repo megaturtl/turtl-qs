@@ -22,7 +22,6 @@ Item {
     property real previousTx: 0
     property double previousSampleMs: 0
     property string addressRequestInterface: ""
-    property bool addressRefreshPending: false
 
     implicitWidth: bubble.implicitWidth
     implicitHeight: bubble.implicitHeight
@@ -113,38 +112,51 @@ Item {
     }
 
     function refreshAddress() {
-        ipAddress = "";
-        if (interfaceName.length === 0)
+        if (!interfaceName || ipProcess.running)
             return;
-        if (ipProcess.running) {
-            if (addressRequestInterface !== interfaceName)
-                addressRefreshPending = true;
-            return;
-        }
-
-        addressRefreshPending = false;
         addressRequestInterface = interfaceName;
-        ipProcess.exec(["sh", "-c", "ip -4 -o addr show dev \"$1\" scope global | awk '{print $4}'", "sh", addressRequestInterface]);
+        ipProcess.exec(["ip", "-j", "-4", "address", "show", "dev", addressRequestInterface, "scope", "global"]);
     }
 
-    function completeAddressRefresh(address) {
-        if (addressRequestInterface === interfaceName)
-            ipAddress = address.trim();
+    function completeAddressRefresh(code, status, output) {
+        const requested = addressRequestInterface;
         addressRequestInterface = "";
-        if (addressRefreshPending)
+        if (requested !== interfaceName) {
             refreshAddress();
+            return;
+        }
+        if (code !== 0 || status !== 0)
+            return;
+        try {
+            const devices = JSON.parse(output);
+            const addresses = [];
+            for (const device of devices)
+                for (const address of device.addr_info ?? [])
+                    addresses.push(`${address.local}/${address.prefixlen}`);
+            ipAddress = addresses.join("\n");
+        } catch (_) {
+            // Keep the last successful sample on invalid output.
+        }
     }
 
     function refreshDefaultRoute() {
         if (!routeProcess.running)
-            routeProcess.exec(["sh", "-c", "ip -4 route show default | awk '{ for (field = 1; field < NF; field++) if ($field == \"dev\") { print $(field + 1); exit } }'"]);
+            routeProcess.running = true;
     }
 
-    function completeDefaultRouteRefresh(interfaceName) {
-        defaultRouteInterface = interfaceName.trim();
+    function completeDefaultRouteRefresh(code, status, output) {
+        if (code !== 0 || status !== 0)
+            return;
+        try {
+            defaultRouteInterface = JSON.parse(output).find(route => route.dev)?.dev ?? "";
+        } catch (_) {
+            // Keep the last successful sample on invalid output.
+        }
     }
 
     onInterfaceNameChanged: {
+        ipAddress = "";
+        addressRequestInterface = "";
         previousRx = 0;
         previousTx = 0;
         previousSampleMs = 0;
@@ -200,9 +212,11 @@ Item {
 
     Process {
         id: routeProcess
+        command: ["ip", "-j", "-4", "route", "show", "default"]
         stdout: StdioCollector {
-            onStreamFinished: root.completeDefaultRouteRefresh(text)
+            id: routeOutput
         }
+        onExited: (code, status) => root.completeDefaultRouteRefresh(code, status, routeOutput.text)
     }
 
     Process {
@@ -215,8 +229,9 @@ Item {
     Process {
         id: ipProcess
         stdout: StdioCollector {
-            onStreamFinished: root.completeAddressRefresh(text)
+            id: addressOutput
         }
+        onExited: (code, status) => root.completeAddressRefresh(code, status, addressOutput.text)
     }
 
     Timer {
