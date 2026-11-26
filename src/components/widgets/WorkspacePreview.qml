@@ -148,6 +148,7 @@ PopupWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             anchors.margins: 6
                             text: root.titleFor(windowPreview.modelData)
+                            textFormat: Text.PlainText
                             color: Shell.Theme.text
                             font.family: Shell.Theme.fontFamily
                             font.pixelSize: 11
