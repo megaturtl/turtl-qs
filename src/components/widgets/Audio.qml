@@ -15,6 +15,7 @@ Item {
     readonly property real volume: audio?.volume ?? 0
     readonly property bool muted: audio?.muted ?? false
     readonly property string description: sink?.description || sink?.name || "No audio device"
+    readonly property bool mixerAvailable: Shell.SessionTools.has("pwvucontrol")
 
     function setVolume(value) {
         if (sink?.ready && audio)
@@ -29,7 +30,7 @@ Item {
         anchors.fill: parent
         hovered: mouse.containsMouse
         tooltipTarget: mouse
-        tooltipText: ["Device: " + root.description, "Muted: " + (root.muted ? "yes" : "no"), "────────────────", "Left · open mixer", "Right · toggle mute", "Scroll · adjust volume"].join("\n")
+        tooltipText: ["Device: " + root.description, "Muted: " + (root.muted ? "yes" : "no"), "────────────────", root.mixerAvailable ? "Left · open mixer" : "Mixer unavailable", "Right · toggle mute", "Scroll · adjust volume"].join("\n")
 
         Primitives.ThemeText {
             id: label
@@ -44,7 +45,7 @@ Item {
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: function (event) {
-                if (event.button === Qt.LeftButton)
+                if (event.button === Qt.LeftButton && root.mixerAvailable)
                     Quickshell.execDetached(["pwvucontrol"]);
                 else if (event.button === Qt.RightButton && root.sink?.ready && root.audio)
                     root.audio.muted = !root.audio.muted;

@@ -65,7 +65,7 @@ Item {
     }
 
     function refreshProfile() {
-        if (batteryPresent && !profileQuery.running && !profileSet.running)
+        if (batteryPresent && Shell.SessionTools.has("powerprofilesctl") && !profileQuery.running && !profileSet.running)
             profileQuery.exec(["powerprofilesctl", "get"]);
     }
 

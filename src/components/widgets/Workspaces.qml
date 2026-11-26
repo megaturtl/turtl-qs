@@ -147,8 +147,10 @@ Item {
     }
 
     function activate(id) {
-        if (isNiri)
-            Quickshell.execDetached(["niri", "msg", "action", "focus-workspace", String(id)]);
+        if (isNiri) {
+            if (Shell.SessionTools.has("niri"))
+                Quickshell.execDetached(["niri", "msg", "action", "focus-workspace", String(id)]);
+        }
         else
             Quickshell.execDetached(["hyprctl", "dispatch", 'hl.dsp.focus({ workspace = "' + id + '" })']);
     }
@@ -157,7 +159,8 @@ Item {
         if (delta === 0)
             return;
         if (isNiri) {
-            Quickshell.execDetached(["niri", "msg", "action", delta > 0 ? "focus-workspace-down" : "focus-workspace-up"]);
+            if (Shell.SessionTools.has("niri"))
+                Quickshell.execDetached(["niri", "msg", "action", delta > 0 ? "focus-workspace-down" : "focus-workspace-up"]);
         } else {
             Quickshell.execDetached(["hyprctl", "dispatch", 'hl.dsp.focus({ workspace = "' + (delta > 0 ? "e+1" : "e-1") + '" })']);
         }
@@ -222,7 +225,7 @@ Item {
 
     Timer {
         interval: Shell.Theme.workspacePollInterval
-        running: root.isNiri
+        running: root.isNiri && Shell.SessionTools.has("niri")
         repeat: true
         triggeredOnStart: true
         onTriggered: root.pollNiri()

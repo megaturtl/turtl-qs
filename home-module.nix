@@ -1,7 +1,7 @@
 {pkgs, ...}: let
-  windowIcons = import ./window-icons.nix {inherit pkgs;};
+  runtimePackages = import ./runtime-packages.nix {inherit pkgs;};
 in {
-  home.packages = [pkgs.adwaita-icon-theme windowIcons];
+  home.packages = [pkgs.adwaita-icon-theme] ++ runtimePackages;
 
   programs.quickshell = {
     enable = true;

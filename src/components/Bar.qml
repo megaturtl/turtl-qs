@@ -23,7 +23,10 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.widgetSpacing
 
-        Widgets.Notifications {}
+        Loader {
+            active: SessionTools.has("swaync-client")
+            sourceComponent: Widgets.Notifications {}
+        }
         Widgets.Clock {}
         Widgets.Tray {}
     }

@@ -25,6 +25,16 @@ quickshell --config default
 
 Home Manager puts the config in `~/.config/quickshell/default`.
 
+Run in a supported Wayland session (Hyprland or Niri). Install a JetBrainsMono
+Nerd Font for the bar glyphs. The network widget reads links from NetworkManager.
+PipeWire provides audio state and UPower provides battery state.
+
+Host-owned integrations are not installed or enabled by the module. Put
+`swaync-client`, `pwvucontrol`, `wlogout`, `hyprlock`, and `powerprofilesctl`
+on the session's PATH only for the integrations you want. SwayNC and power
+profiles also need their corresponding services; configure and test your
+locker separately. On Niri, the native `niri` client must be on the session PATH.
+
 ## Monitors
 
 The bar uses the first monitor available at startup. If you disconnect that

@@ -34,24 +34,19 @@
 
     devShells = forEachSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
-      windowIcons = import ./window-icons.nix {inherit pkgs;};
+      runtimePackages = import ./runtime-packages.nix {inherit pkgs;};
     in {
       default = pkgs.mkShellNoCC {
-        packages = [
-          pkgs.qt6.qtdeclarative
-          pkgs.quickshell
-          windowIcons
-          (pkgs.python3.withPackages (ps: [ps.python-xlib ps.pillow]))
-        ];
+        packages = [pkgs.python3 pkgs.qt6.qtdeclarative pkgs.quickshell] ++ runtimePackages;
       };
     });
 
     apps = forEachSystem (system: let
       pkgs = nixpkgs.legacyPackages.${system};
-      windowIcons = import ./window-icons.nix {inherit pkgs;};
+      runtimePackages = import ./runtime-packages.nix {inherit pkgs;};
       runner = pkgs.writeShellApplication {
         name = "run-quickshell";
-        runtimeInputs = [pkgs.quickshell windowIcons];
+        runtimeInputs = [pkgs.quickshell] ++ runtimePackages;
         text = ''
           exec quickshell --path ${./src} "$@"
         '';
