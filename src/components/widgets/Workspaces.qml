@@ -17,6 +17,24 @@ Item {
     property var niriWorkspaces: []
     property var niriWindows: []
     property var windowIcons: ({})
+    readonly property var uniqueXwaylandPids: {
+        const unique = new Set();
+        if (isNiri)
+            return unique;
+        const seen = new Set();
+        for (const window of Hyprland.toplevels.values) {
+            const ipc = window.lastIpcObject;
+            if (!ipc?.xwayland || !ipc.pid)
+                continue;
+            if (seen.has(ipc.pid))
+                unique.delete(ipc.pid);
+            else {
+                seen.add(ipc.pid);
+                unique.add(ipc.pid);
+            }
+        }
+        return unique;
+    }
     readonly property string fallbackIcon: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="' + Shell.Theme.text + '" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 8h20M6 5.5h.01M9 5.5h.01"/></svg>')
     readonly property var niriVisibleWorkspaces: {
         const focused = niriWorkspaces.find(workspace => workspace.is_focused);
@@ -102,28 +120,36 @@ Item {
         return null;
     }
 
+    function hyprlandClient(window) {
+        const ipc = window.lastIpcObject;
+        return {
+            identifiers: [window.handle?.appId ?? "", ipc?.["class"] ?? ""],
+            xwayland: ipc?.xwayland === true,
+            pid: ipc?.pid,
+            wmClass: ipc?.["class"]
+        };
+    }
+
     function clientsFor(id) {
         if (isNiri) {
             const workspace = niriVisibleWorkspaces.find(candidate => candidate.idx === id);
             if (!workspace)
                 return [];
             return niriWindows.filter(window => window.workspace_id === workspace.id).map(window => ({
-                        identifiers: [window.app_id ?? ""],
-                        pid: window.pid
+                        identifiers: [window.app_id ?? ""]
                     }));
         }
 
         const workspace = Hyprland.workspaces.values.find(candidate => candidate.id === id);
-        return workspace?.toplevels.values.map(window => ({
-                    identifiers: [window.handle?.appId ?? "", window.lastIpcObject?.["class"] ?? ""],
-                    pid: window.lastIpcObject?.pid
-                })) ?? [];
+        return workspace?.toplevels.values.map(window => hyprlandClient(window)) ?? [];
     }
 
     function iconFor(client) {
-        const windowIcon = windowIcons[String(client.pid)];
-        if (windowIcon)
-            return windowIcon;
+        if (client.xwayland && uniqueXwaylandPids.has(client.pid)) {
+            const icon = windowIcons[String(client.pid)];
+            if (icon && icon.wmClass === client.wmClass)
+                return icon.source;
+        }
         const icon = desktopEntryFor(client.identifiers)?.icon ?? "";
         if (icon.startsWith("/"))
             return "file://" + icon.split("/").map(encodeURIComponent).join("/");
@@ -183,7 +209,7 @@ Item {
     }
 
     function refreshWindowIcons() {
-        if (Quickshell.env("DISPLAY") !== null && !windowIconsProcess.running)
+        if (!isNiri && Quickshell.env("DISPLAY") && !windowIconsProcess.running)
             windowIconsProcess.running = true;
     }
 
@@ -204,7 +230,6 @@ Item {
     function pollNiri() {
         if (!isNiri)
             return;
-        refreshWindowIcons();
         if (!niriWorkspacesProcess.running)
             niriWorkspacesProcess.running = true;
         if (!niriWindowsProcess.running)
@@ -326,10 +351,7 @@ Item {
                     workspace: workspaceBubble.hyprlandWorkspace
                     hovered: !root.isNiri && mouse.containsMouse
                     revision: root.hyprlandToplevelRevision
-                    iconResolver: toplevel => root.iconFor({
-                            identifiers: [toplevel.handle?.appId ?? "", toplevel.lastIpcObject?.["class"] ?? ""],
-                            pid: toplevel.lastIpcObject?.pid
-                        })
+                    iconResolver: toplevel => root.iconFor(root.hyprlandClient(toplevel))
                 }
 
                 Shell.BarTooltip {

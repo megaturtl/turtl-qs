@@ -79,12 +79,26 @@ def read_window_icons():
         windows = property_values(
             connection.screen().root, clients_atom, Xatom.WINDOW, MAX_WINDOWS
         )
-        icons = {}
+        candidates = {}
         for xid in windows:
             try:
                 window = connection.create_resource_object("window", xid)
                 pid = property_values(window, pid_atom, Xatom.CARDINAL, 1)
-                if len(pid) != 1 or not pid[0] or str(pid[0]) in icons:
+                if len(pid) == 1 and pid[0]:
+                    candidates[pid[0]] = None if pid[0] in candidates else window
+            except error.BadWindow:
+                continue
+
+        icons = {}
+        for pid, window in candidates.items():
+            if window is None:
+                continue
+            try:
+                wm_class = window.get_property(Xatom.WM_CLASS, Xatom.STRING, 0, 256)
+                if wm_class is None or wm_class.format != 8 or wm_class.bytes_after:
+                    continue
+                parts = wm_class.value.split(b"\0")
+                if len(parts) != 3 or not parts[1] or parts[2]:
                     continue
                 values = property_values(
                     window, icon_atom, Xatom.CARDINAL, MAX_PROPERTY_ITEMS
@@ -93,9 +107,11 @@ def read_window_icons():
                 if image is not None:
                     png = BytesIO()
                     image.save(png, format="PNG")
-                    icons[str(pid[0])] = "data:image/png;base64," + base64.b64encode(
-                        png.getvalue()
-                    ).decode("ascii")
+                    icons[str(pid)] = {
+                        "wmClass": parts[1].decode("utf-8", errors="replace"),
+                        "source": "data:image/png;base64,"
+                        + base64.b64encode(png.getvalue()).decode("ascii"),
+                    }
             except error.BadWindow:
                 # A window can close between enumeration and a property request.
                 continue

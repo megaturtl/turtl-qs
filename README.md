@@ -47,11 +47,12 @@ close it. The calendar highlights today and uses your locale's weekday order.
 
 ## Workspace icons
 
-The workspace widget uses desktop-entry icons, or window icons from XWayland apps if available. Apps without a discoverable icon show a generic window icon.
-
-Native Wayland apps need a matching desktop entry to show their application icon.
-The helper uses python-xlib for X11 access and Pillow for PNG encoding.
-These are included in the flake.
+Both compositors use matching desktop-entry icons, with a generic icon if
+none is available. On Hyprland, a window-specific XWayland icon takes
+precedence when the process ID and window class match unambiguously.
+Niri uses desktop entries because its satellite windows do not expose
+a reliable X11 window identity. The packaged X11 helper uses python-xlib
+and Pillow.
 
 ## Development
 
