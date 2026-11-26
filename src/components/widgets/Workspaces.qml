@@ -146,13 +146,29 @@ Item {
         return Hyprland.workspaces.values.some(workspace => workspace.id === id && workspace.focused);
     }
 
+    function dispatchHyprland(selector, special) {
+        if (!Hyprland.focusedMonitor || /[\x00-\x1f\x7f]/.test(selector))
+            return;
+        if (Hyprland.usingLua) {
+            const argument = JSON.stringify(selector);
+            Hyprland.dispatch(special ? `hl.dsp.workspace.toggle_special(${argument})` : `hl.dsp.focus({ workspace = ${argument} })`);
+        } else {
+            Hyprland.dispatch(special ? `togglespecialworkspace ${selector}` : `workspace ${selector}`);
+        }
+    }
+
     function activate(id) {
         if (isNiri) {
             if (Shell.SessionTools.has("niri"))
                 Quickshell.execDetached(["niri", "msg", "action", "focus-workspace", String(id)]);
+        } else {
+            const workspace = Hyprland.workspaces.values.find(candidate => candidate.id === id);
+            const name = workspace?.name ?? "";
+            if (name === "special" || name.startsWith("special:"))
+                dispatchHyprland(name === "special" ? "" : name.slice(8), true);
+            else if (id > 0 || name)
+                dispatchHyprland(id > 0 ? String(id) : `name:${name}`, false);
         }
-        else
-            Quickshell.execDetached(["hyprctl", "dispatch", 'hl.dsp.focus({ workspace = "' + id + '" })']);
     }
 
     function scroll(delta) {
@@ -162,7 +178,7 @@ Item {
             if (Shell.SessionTools.has("niri"))
                 Quickshell.execDetached(["niri", "msg", "action", delta > 0 ? "focus-workspace-down" : "focus-workspace-up"]);
         } else {
-            Quickshell.execDetached(["hyprctl", "dispatch", 'hl.dsp.focus({ workspace = "' + (delta > 0 ? "e+1" : "e-1") + '" })']);
+            dispatchHyprland(delta > 0 ? "e+1" : "e-1", false);
         }
     }
 
@@ -270,7 +286,7 @@ Item {
                         Primitives.ThemeText {
                             id: workspaceNumber
                             anchors.centerIn: parent
-                            text: workspaceBubble.modelData
+                            text: workspaceBubble.modelData < 0 ? (workspaceBubble.hyprlandWorkspace?.name ?? workspaceBubble.modelData) : workspaceBubble.modelData
                             color: workspaceBubble.active ? Shell.Theme.base : (workspaceBubble.icons.length ? Shell.Theme.text : Shell.Theme.overlay1)
                             font.bold: workspaceBubble.active
                         }
