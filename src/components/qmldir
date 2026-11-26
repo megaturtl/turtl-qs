@@ -4,3 +4,4 @@ singleton SessionTools 1.0 SessionTools.qml
 Bar 1.0 Bar.qml
 BarTooltip 1.0 BarTooltip.qml
 Osd 1.0 Osd.qml
+OsdState 1.0 OsdState.qml

@@ -20,7 +20,7 @@ ShellRoot {
     onScreensChanged: rememberBarScreen()
     Component.onCompleted: rememberBarScreen()
 
-    Shell.Osd {
+    Shell.OsdState {
         id: osdState
     }
 
