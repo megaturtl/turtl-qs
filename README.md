@@ -50,3 +50,7 @@ nix develop
 nix fmt
 nix run
 ```
+
+`nix run` runs the flake's packaged configuration. To edit and reload the
+working tree instead, run `quickshell --path "$PWD/src"` from the checkout
+inside `nix develop`.

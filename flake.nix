@@ -53,7 +53,7 @@
         name = "run-quickshell";
         runtimeInputs = [pkgs.quickshell windowIcons];
         text = ''
-          exec quickshell --path "$PWD/src" "$@"
+          exec quickshell --path ${./src} "$@"
         '';
       };
     in {
